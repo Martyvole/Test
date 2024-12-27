@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docházkový systém</title>
+    <!-- =============== CSS STYLY =============== -->
+    <style>
+        /* Základní styly pro celou stránku */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        /* Hlavní kontejner */
+        .attendance-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Kontejner pro tlačítka */
+        .button-container {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        /* Základní styl tlačítek */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        /* Specifické styly pro tlačítka */
+        .btn-checkin { background-color: #4CAF50; color: white; }
+        .btn-checkout { background-color: #f44336; color: white; }
+
+        /* Efekty tlačítek */
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Styly pro stavové zprávy */
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.error { background-color: #ffebee; color: #c62828; }
+        .status.success { background-color: #e8f5e9; color: #2e7d32; }
+
+        /* Styly pro výpis záznamů */
+        .records {
+            margin-top: 20px;
+        }
+        .record-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .record-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Styl pro hodiny */
+        .clock {
+            font-size: 2em;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        /* Styl pro filtr datumu */
+        .date-filter {
+            margin: 20px 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- =============== HTML STRUKTURA =============== -->
+    <div class="attendance-container">
+        <h1 style="text-align: center;">Docházkový systém</h1>
+        
+        <!-- Digitální hodiny -->
+        <div class="clock" id="clock">00:00:00</div>
+        
+        <!-- Tlačítka pro příchod/odchod -->
+        <div class="button-container">
+            <button id="btn-checkin" class="btn btn-checkin">Příchod</button>
+            <button id="btn-checkout" class="btn btn-checkout">Odchod</button>
+        </div>
+
+        <!-- Prostor pro zobrazení stavových zpráv -->
+        <div id="status" class="status" style="display: none;"></div>
+
+        <!-- Filtr pro datum -->
+        <div class="date-filter">
+            <label for="date-select">Filtrovat podle data:</label>
+            <input type="date" id="date-select">
+        </div>
+
+        <!-- Seznam záznamů -->
+        <div class="records" id="records"></div>
+    </div>
+
+    <!-- =============== JAVASCRIPT =============== -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Získání referencí na HTML elementy
+            const btnCheckin = document.getElementById('btn-checkin');
+            const btnCheckout = document.getElementById('btn-checkout');
+            const statusEl = document.getElementById('status');
+            const recordsEl = document.getElementById('records');
+            const dateSelect = document.getElementById('date-select');
+            const clockEl = document.getElementById('clock');
+
+            // Funkce pro aktualizaci hodin
+            function updateClock() {
+                clockEl.textContent = new Date().toLocaleTimeString('cs-CZ');
+            }
+            setInterval(updateClock, 1000);
+            updateClock();
+
+            // Funkce pro zobrazení stavové zprávy
+            function showStatus(message, isError = false) {
+                statusEl.textContent = message;
+                statusEl.className = `status ${isError ? 'error' : 'success'}`;
+                statusEl.style.display = 'block';
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+            }
+
+            // Funkce pro formátování datumu
+            function formatDate(dateStr) {
+                return new Date(dateStr).toLocaleDateString('cs-CZ');
+            }
+
+            // Funkce pro načtení záznamů
+            async function loadRecords() {
+                try {
+                    const date = dateSelect.value;
+                    const url = date 
+                        ? `/api/attendance/log?date=${formatDate(date)}`
+                        : '/api/attendance/log';
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        recordsEl.innerHTML = data.records
+                            .map(record => `
+                                <div class="record-item">
+                                    <span>${record.date}</span>
+                                    <span>${record.type === 'checkin' ? 'Příchod' : 'Odchod'}</span>
+                                    <span>${record.time}</span>
+                                </div>
+                            `)
+                            .join('');
+                    }
+                } catch (error) {
+                    showStatus('Nepodařilo se načíst záznamy', true);
+                }
+            }
+
+            // Funkce pro zpracování příchodu/odchodu
+            async function handleAttendance(type) {
+                try {
+                    const response = await fetch(`/api/attendance/${type}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showStatus(`${type === 'checkin' ? 'Příchod' : 'Odchod'} byl úspěšně zaznamenán`);
+                        loadRecords();
+                    } else {
+                        showStatus(data.error, true);
+                    }
+                } catch (error) {
+                    showStatus('Došlo k chybě při komunikaci se serverem', true);
+                }
+            }
+
+            // Nastavení event listenerů
+            btnCheckin.addEventListener('click', () => handleAttendance('checkin'));
+            btnCheckout.addEventListener('click', () => handleAttendance('checkout'));
+            dateSelect.addEventListener('change', loadRecords);
+
+            // Počáteční načtení záznamů
+            loadRecords();
+        });
+    </script>
+</body>
+</html>
